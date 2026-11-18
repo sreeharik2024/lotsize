@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lot Size Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#e8eeeb; --panel:#f6f9f7; --ink:#14231f; --muted:#5b6b66; --line:#c7d2cd;
+  --accent:#0f6b5c; --accent-ink:#ffffff; --loss:#b3382c; --gain:#0f6b5c;
+  --head:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+  --body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1815; --panel:#17221f; --ink:#e4efeb; --muted:#8fa39c; --line:#2b3b36;
+    --accent:#3fb59f; --accent-ink:#06201b; --loss:#f08a7e; --gain:#5fd1b9;
+  }
+}
+*{box-sizing:border-box}
+html{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink); font-family:var(--body); font-size:16px;
+  line-height:1.4; min-height:100%;
+  padding:max(16px,env(safe-area-inset-top,0px)) 16px max(24px,env(safe-area-inset-bottom,0px));
+}
+main{max-width:460px; margin:0 auto}
+h1{font-family:var(--head); font-weight:700; font-size:26px; margin:4px 0 14px; letter-spacing:-.01em}
+.panel{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:14px}
+label{display:block; font-size:13px; font-weight:500; color:var(--muted); margin-bottom:5px}
+input,select{
+  width:100%; font:inherit; font-size:16px; color:var(--ink); background:var(--bg);
+  border:1px solid var(--line); border-radius:9px; padding:11px 12px; min-height:44px;
+}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+.row{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+.field{margin-bottom:12px}
+.field:last-child{margin-bottom:0}
+.seg{display:grid; grid-template-columns:1fr 1fr; gap:4px; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:3px; margin-bottom:12px}
+.seg button{
+  font:inherit; font-size:14px; font-weight:500; border:0; background:transparent; color:var(--muted);
+  padding:9px; border-radius:8px; min-height:40px; cursor:pointer;
+}
+.seg button[aria-pressed="true"]{background:var(--accent); color:var(--accent-ink)}
+.hidden{display:none !important}
+.result{border-color:var(--accent); border-width:2px}
+.lots{font-family:var(--head); font-weight:700; font-size:64px; line-height:1; letter-spacing:-.02em; margin:2px 0 2px}
+.lots small{font-size:20px; font-weight:500; color:var(--muted); margin-left:6px}
+.sub{color:var(--muted); font-size:14px; min-height:20px}
+dl{margin:14px 0 0; display:grid; grid-template-columns:1fr auto; gap:8px 12px; font-size:15px}
+dt{color:var(--muted)}
+dd{margin:0; font-weight:600; text-align:right; font-variant-numeric:tabular-nums}
+.loss{color:var(--loss)} .gain{color:var(--gain)}
+.msg{color:var(--loss); font-size:14px; margin-top:10px; min-height:0}
+.note{font-size:12.5px; color:var(--muted); margin:10px 2px 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>Lot size calculator</h1>
+
+  <section class="panel" aria-label="Trade inputs">
+    <div class="field">
+      <label for="sym">Instrument</label>
+      <select id="sym"></select>
+    </div>
+
+    <div class="field hidden" id="contractWrap">
+      <label for="contract">Contract size (units per 1 lot)</label>
+      <input id="contract" type="number" inputmode="decimal" value="100" min="0" step="any">
+    </div>
+
+    <div class="row field">
+      <div>
+        <label for="bal">Balance ($)</label>
+        <input id="bal" type="number" inputmode="decimal" placeholder="10000" min="0" step="any">
+      </div>
+      <div>
+        <label for="riskPct">Risk (%)</label>
+        <input id="riskPct" type="number" inputmode="decimal" placeholder="1" min="0" step="any">
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="riskAmt">Risk amount ($)</label>
+      <input id="riskAmt" type="number" inputmode="decimal" placeholder="auto from % or type directly" min="0" step="any">
+    </div>
+
+    <div class="field">
+      <label for="entry">Entry price</label>
+      <input id="entry" type="number" inputmode="decimal" placeholder="e.g. 1.0850" step="any">
+    </div>
+
+    <div class="seg hidden" id="slMode" role="group" aria-label="Stop loss input type">
+      <button type="button" data-mode="price" aria-pressed="true">SL by price</button>
+      <button type="button" data-mode="pips" aria-pressed="false">SL by pips</button>
+    </div>
+
+    <div class="field" id="slPriceWrap">
+      <label for="sl">Stop loss price</label>
+      <input id="sl" type="number" inputmode="decimal" placeholder="e.g. 1.0830" step="any">
+    </div>
+    <div class="field hidden" id="slPipsWrap">
+      <label for="slPips">Stop loss (pips)</label>
+      <input id="slPips" type="number" inputmode="decimal" placeholder="e.g. 20" min="0" step="any">
+    </div>
+
+    <div class="field">
+      <label for="tp">Take profit price (optional)</label>
+      <input id="tp" type="number" inputmode="decimal" placeholder="for reward and R:R" step="any">
+    </div>
+
+    <div class="field hidden" id="convWrap">
+      <label for="conv" id="convLabel">Conversion rate</label>
+      <input id="conv" type="number" inputmode="decimal" step="any">
+    </div>
+  </section>
+
+  <section class="panel result" aria-live="polite">
+    <div class="sub">Position size</div>
+    <div class="lots"><span id="lots">–</span><small>lot</small></div>
+    <div class="sub" id="lotsSub"></div>
+    <dl id="details"></dl>
+    <div class="msg" id="msg"></div>
+  </section>
+
+  <p class="note">Account currency is USD. Contract size depends on your broker: check the symbol specification and use Custom if it differs. Lots are rounded down to 0.01.</p>
+</main>
+
+<script>
+(function(){
+  var FOREX = [
+    "EURUSD","GBPUSD","AUDUSD","NZDUSD","USDJPY","USDCHF","USDCAD",
+    "EURGBP","EURJPY","GBPJPY","AUDJPY","CADJPY","CHFJPY","NZDJPY",
+    "EURAUD","GBPAUD","EURCHF","EURCAD","GBPCAD","AUDCAD","AUDNZD","GBPCHF","AUDCHF","NZDCAD"
+  ];
+  // How to turn 1 unit of quote currency into USD
+  var TO_USD = {
+    USD:null,
+    JPY:{pair:"USDJPY", invert:true},
+    CHF:{pair:"USDCHF", invert:true},
+    CAD:{pair:"USDCAD", invert:true},
+    GBP:{pair:"GBPUSD", invert:false},
+    EUR:{pair:"EURUSD", invert:false},
+    AUD:{pair:"AUDUSD", invert:false},
+    NZD:{pair:"NZDUSD", invert:false}
+  };
+  var INST = {};
+  FOREX.forEach(function(s){
+    var q = s.slice(3);
+    INST[s] = {sym:s, type:"fx", quote:q, contract:100000, pip: q==="JPY" ? 0.01 : 0.0001, dec: q==="JPY" ? 3 : 5};
+  });
+  INST.XAUUSD = {sym:"XAUUSD", type:"metal", quote:"USD", contract:100, dec:2, unit:"$"};
+  INST.XAGUSD = {sym:"XAGUSD", type:"metal", quote:"USD", contract:5000, dec:3, unit:"$"};
+  INST.CUSTOM = {sym:"CUSTOM", type:"custom", quote:"USD", contract:100, dec:2, unit:"$"};
+
+  var $ = function(id){return document.getElementById(id)};
+  var ids = ["sym","contract","bal","riskPct","riskAmt","entry","sl","slPips","tp","conv"];
+  var slMode = "price";
+  var KEY = "lotcalc-v1";
+
+  // Build instrument select
+  var sel = $("sym");
+  function group(label, items){
+    var g = document.createElement("optgroup"); g.label = label;
+    items.forEach(function(it){
+      var o = document.createElement("option"); o.value = it[0]; o.textContent = it[1]; g.appendChild(o);
+    });
+    sel.appendChild(g);
+  }
+  group("Commodities", [["XAUUSD","Gold (XAUUSD)"],["XAGUSD","Silver (XAGUSD)"]]);
+  group("Forex", FOREX.map(function(s){return [s, s.slice(0,3)+"/"+s.slice(3)]}));
+  group("Other", [["CUSTOM","Custom (USD-quoted)"]]);
+
+  function save(){
+    try{
+      var d = {slMode:slMode};
+      ids.forEach(function(i){d[i] = $(i).value});
+      localStorage.setItem(KEY, JSON.stringify(d));
+    }catch(e){}
+  }
+  function load(){
+    try{
+      var d = JSON.parse(localStorage.getItem(KEY) || "null");
+      if(!d) return;
+      ids.forEach(function(i){ if(d[i] !== undefined && (i!=="sym" || INST[d[i]])) $(i).value = d[i]; });
+      if(d.slMode === "pips" || d.slMode === "price") slMode = d.slMode;
+    }catch(e){}
+  }
+
+  function num(id){
+    var v = parseFloat($(id).value);
+    return isFinite(v) ? v : NaN;
+  }
+  function fmt(n, d){
+    return n.toLocaleString("en-US", {minimumFractionDigits:d, maximumFractionDigits:d});
+  }
+  function usd(n){ return (n<0?"-":"") + "$" + fmt(Math.abs(n), 2); }
+
+  function applyLayout(){
+    var inst = INST[$("sym").value];
+    $("slMode").classList.toggle("hidden", inst.type !== "fx");
+    if(inst.type !== "fx") slMode = "price";
+    $("contractWrap").classList.toggle("hidden", inst.type !== "custom");
+    var pips = slMode === "pips";
+    $("slPriceWrap").classList.toggle("hidden", pips);
+    $("slPipsWrap").classList.toggle("hidden", !pips);
+    Array.prototype.forEach.call($("slMode").querySelectorAll("button"), function(b){
+      b.setAttribute("aria-pressed", b.dataset.mode === slMode ? "true" : "false");
+    });
+    // conversion rate field: only for pairs whose quote isn't USD and that aren't USD-based
+    var needConv = inst.type === "fx" && inst.quote !== "USD" && inst.sym.slice(0,3) !== "USD";
+    $("convWrap").classList.toggle("hidden", !needConv);
+    if(needConv){
+      $("convLabel").textContent = TO_USD[inst.quote].pair + " rate (to convert " + inst.quote + " to USD)";
+      $("conv").placeholder = "current " + TO_USD[inst.quote].pair + " price";
+    }
+    $("entry").placeholder = inst.type === "fx" ? (inst.quote === "JPY" ? "e.g. 151.250" : "e.g. 1.0850")
+      : inst.sym === "XAUUSD" ? "e.g. 2650.00" : inst.sym === "XAGUSD" ? "e.g. 31.000" : "entry price";
+  }
+
+  function clearOut(msg){
+    $("lots").textContent = "–";
+    $("lotsSub").textContent = "";
+    $("details").innerHTML = "";
+    $("msg").textContent = msg || "";
+  }
+
+  function row(k, v, cls){
+    return "<dt>"+k+"</dt><dd"+(cls?' class="'+cls+'"':"")+">"+v+"</dd>";
+  }
+
+  function calc(){
+    var inst = INST[$("sym").value];
+    var risk = num("riskAmt");
+    var entry = num("entry");
+    var contract = inst.type === "custom" ? num("contract") : inst.contract;
+    var dist, distPips = NaN;
+
+    if(!(risk > 0)) return clearOut("");
+    if(!(contract > 0)) return clearOut("Enter a contract size.");
+
+    if(inst.type === "fx" && slMode === "pips"){
+      var p = num("slPips");
+      if(!(p > 0)) return clearOut("");
+      dist = p * inst.pip; distPips = p;
+    }else{
+      var sl = num("sl");
+      if(!(entry > 0) || !(sl > 0)) return clearOut("");
+      dist = Math.abs(entry - sl);
+      if(dist === 0) return clearOut("Entry and stop loss can't be the same price.");
+      if(inst.type === "fx") distPips = dist / inst.pip;
+    }
+
+    // conversion of quote currency to USD
+    var toUsd = 1;
+    var rule = TO_USD[inst.quote];
+    if(rule){
+      var rate;
+      if(inst.type === "fx" && inst.sym === rule.pair) rate = entry;       // USDJPY, USDCHF, USDCAD
+      else if(inst.type === "fx" && inst.sym.slice(0,3) === "USD") rate = entry;
+      else rate = num("conv");
+      if(!(rate > 0)){
+        return clearOut(inst.sym.slice(0,3) === "USD"
+          ? "Enter the entry price: it is needed to convert the pip value to USD."
+          : "Enter the " + rule.pair + " rate to convert to USD.");
+      }
+      toUsd = rule.invert ? 1 / rate : rate;
+    }
+
+    var lossPerLot = dist * contract * toUsd;
+    var raw = risk / lossPerLot;
+    var lots = Math.floor(raw * 100 + 1e-9) / 100;
+    var actualRisk = lots * lossPerLot;
+
+    var msg = "";
+    if(lots < 0.01){
+      msg = "Even 0.01 lot risks " + usd(0.01 * lossPerLot) + ", more than your " + usd(risk) + ". Widen the risk amount or tighten the stop.";
+    }
+    $("lots").textContent = fmt(lots, 2);
+    $("lotsSub").textContent = "Exact: " + fmt(raw, 3) + " lot, rounded down";
+
+    var h = "";
+    h += row("Risk at this lot", usd(actualRisk), "loss");
+    if(!isNaN(distPips)) h += row("Stop loss", fmt(distPips, 1) + " pips");
+    else h += row("Stop loss distance", "$" + fmt(dist, inst.dec));
+    h += row("Loss per 1 lot at SL", usd(lossPerLot));
+    h += row("Units", fmt(lots * contract, 0));
+
+    var tp = num("tp");
+    if(tp > 0 && entry > 0){
+      var tpDist = Math.abs(tp - entry);
+      var reward = tpDist * contract * toUsd * lots;
+      h += row("Reward at TP", usd(reward), "gain");
+      h += row("Risk : Reward", "1 : " + fmt(reward / (actualRisk || 1), 2));
+    }
+    $("details").innerHTML = h;
+    $("msg").textContent = msg;
+  }
+
+  // Risk % <-> amount linking
+  function fromPct(){
+    var b = num("bal"), p = num("riskPct");
+    if(b > 0 && p >= 0) $("riskAmt").value = String(Math.round(b * p) / 100);
+  }
+  function fromAmt(){
+    var b = num("bal"), a = num("riskAmt");
+    if(b > 0 && a >= 0) $("riskPct").value = String(Math.round(a / b * 10000) / 100);
+  }
+
+  $("riskPct").addEventListener("input", function(){ fromPct(); calc(); save(); });
+  $("riskAmt").addEventListener("input", function(){ fromAmt(); calc(); save(); });
+  $("bal").addEventListener("input", function(){
+    if(!isNaN(num("riskPct"))) fromPct(); else fromAmt();
+    calc(); save();
+  });
+  ["entry","sl","slPips","tp","conv","contract"].forEach(function(i){
+    $(i).addEventListener("input", function(){ calc(); save(); });
+  });
+  $("sym").addEventListener("change", function(){ applyLayout(); calc(); save(); });
+  Array.prototype.forEach.call($("slMode").querySelectorAll("button"), function(b){
+    b.addEventListener("click", function(){ slMode = b.dataset.mode; applyLayout(); calc(); save(); });
+  });
+
+  load();
+  if(!INST[$("sym").value]) $("sym").value = "XAUUSD";
+  applyLayout();
+  calc();
+})();
+</script>
+</body>
+</html>
